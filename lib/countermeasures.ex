@@ -2,60 +2,52 @@ defmodule Countermeasures do
   use Application
 
   def start(_, _) do
-    {:ok, laser} = Gpio.start_link(17, :output)
-    Gpio.write(laser, 0)
-
     {:ok, buzzer} = Gpio.start_link(18, :output)
     Gpio.write(buzzer, 1)
 
-    {:ok, sensors} = I2c.start_link("i2c-1", 0x48)
+    {:ok, laser} = Gpio.start_link(17, :output)
+    Gpio.write(laser, 0)
 
     {:ok, vibration} = Gpio.start_link(23, :input)
+    {:ok, sensors} = I2c.start_link("i2c-1", 0x48)
 
-    spawn(fn -> loop(%{buzzer: buzzer, vibration: vibration, sensors: sensors}) end)
+    spawn(fn -> loop(%{buzzer: buzzer, sensors: sensors, vibration: vibration}) end)
 
     IO.puts "Intrusion Countermeasures On!"
 
     {:ok, self}
   end
 
-  def loop(%{buzzer: buzzer, vibration: vibration, sensors: sensors} = state) do
-    :timer.sleep(100)
+  def loop(%{buzzer: buzzer, sensors: sensors, vibration: vibration} = state) do
+    :timer.sleep(200)
 
     value = read_sensor(sensors, 0)
-
-    if value > 45 do
-      IO.puts "Intruder detected: laser triggered! (#{value})"
-      Gpio.write(buzzer, 0)
-      loop(state)
+    if value > 50 do
+      alarm("Laser triggered! (#{value})", state)
     end
 
     value = read_sensor(sensors, 1)
-
     if value < 110 do
-      IO.puts "Intruder detected: temp triggered! (#{value})"
-      Gpio.write(buzzer, 0)
-      loop(state)
+      alarm("Temperature triggered! (#{value})", state)
     end
 
     value = Gpio.read(vibration)
-
     if value == 0 do
-      IO.puts "Intruder detected: vibration triggered! (#{value})"
-      Gpio.write(buzzer, 0)
-      loop(state)
+      alarm("Vibration triggered! (#{value})", state)
     end
 
     value = read_sensor(sensors, 2)
-
     if value < 110 do
-      IO.puts "Intruder detected: noise triggered! (#{value})"
-      Gpio.write(buzzer, 0)
-      loop(state)
+      alarm("Noise triggered! (#{value})", state)
     end
 
-    # no sensor triggered
     Gpio.write(buzzer, 1)
+    loop(state)
+  end
+
+  defp alarm(msg, %{buzzer: buzzer} = state) do
+    IO.puts msg
+    Gpio.write(buzzer, 0)
     loop(state)
   end
 
